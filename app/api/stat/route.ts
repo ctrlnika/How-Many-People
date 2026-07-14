@@ -46,7 +46,17 @@ User question: "${query}"`,
 
     return Response.json(object)
   } catch (error) {
-    console.log("[v0] /api/stat error:", error instanceof Error ? error.message : error)
+    const message = error instanceof Error ? error.message : String(error)
+    console.log("[v0] /api/stat error:", message)
+
+    // Surface rate-limit errors clearly so the UI can tell users to wait.
+    if (/rate-limit|rate limit|429|too many requests/i.test(message)) {
+      return Response.json(
+        { error: "Too many requests right now. Please wait a moment and try again." },
+        { status: 429 },
+      )
+    }
+
     return Response.json({ error: "Failed to generate a statistic. Please try again." }, { status: 500 })
   }
 }

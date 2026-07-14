@@ -96,11 +96,14 @@ export default function HowManyPeople() {
         body: JSON.stringify({ query: searchQuery }),
       })
 
-      if (!res.ok) {
-        throw new Error("Request failed")
-      }
-
       const data = await res.json()
+
+      if (!res.ok) {
+        setResult(null)
+        setHighlightedIndices([])
+        setError(data.error || "Something went wrong. Please try again.")
+        return
+      }
 
       if (!data.answerable) {
         setResult(null)
