@@ -6,7 +6,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Search, Shuffle } from "lucide-react"
+import { Search, Shuffle, Loader2 } from "lucide-react"
 
 // Sample dataset with statistics
 const STATISTICS_DATA = {
@@ -67,57 +67,54 @@ export default function HowManyPeople() {
   const [result, setResult] = useState<{ percentage: number; description: string; query: string } | null>(null)
   const [highlightedIndices, setHighlightedIndices] = useState<number[]>([])
   const [isAnimating, setIsAnimating] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Extract keywords from natural language query
-  const extractKeywords = (query: string): string => {
-    const cleanQuery = query
-      .toLowerCase()
-      .replace(/how many people/g, "")
-      .replace(/what percentage of people/g, "")
-      .replace(/have|are|suffer from|experience|with|do|does/g, "")
-      .replace(/\?/g, "")
-      .trim()
+  const showStat = (percentage: number, description: string, searchQuery: string) => {
+    setIsAnimating(true)
+    setResult({ percentage, description, query: searchQuery })
 
-    // Try exact match first
-    if (STATISTICS_DATA[cleanQuery as keyof typeof STATISTICS_DATA]) {
-      return cleanQuery
-    }
+    // Generate random indices for highlighting (rounded to nearest whole person)
+    const count = Math.max(0, Math.min(100, Math.round(percentage)))
+    const indices = Array.from({ length: 100 }, (_, i) => i)
+    const shuffled = indices.sort(() => Math.random() - 0.5)
+    setHighlightedIndices(shuffled.slice(0, count))
 
-    // Try partial matches
-    for (const key of Object.keys(STATISTICS_DATA)) {
-      if (cleanQuery.includes(key) || key.includes(cleanQuery)) {
-        return key
-      }
-    }
-
-    return cleanQuery
+    setTimeout(() => setIsAnimating(false), 1000)
   }
 
-  const handleSearch = (searchQuery: string = query) => {
-    if (!searchQuery.trim()) return
+  const handleSearch = async (searchQuery: string = query) => {
+    if (!searchQuery.trim() || isLoading) return
 
-    const keyword = extractKeywords(searchQuery)
-    const stat = STATISTICS_DATA[keyword as keyof typeof STATISTICS_DATA]
+    setError(null)
+    setIsLoading(true)
 
-    if (stat) {
-      setIsAnimating(true)
-      setResult({
-        percentage: stat.percentage,
-        description: stat.description,
-        query: searchQuery,
+    try {
+      const res = await fetch("/api/stat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: searchQuery }),
       })
 
-      // Generate random indices for highlighting
-      const indices = Array.from({ length: 100 }, (_, i) => i)
-      const shuffled = indices.sort(() => Math.random() - 0.5)
-      const highlighted = shuffled.slice(0, stat.percentage)
+      if (!res.ok) {
+        throw new Error("Request failed")
+      }
 
-      setHighlightedIndices(highlighted)
+      const data = await res.json()
 
-      setTimeout(() => setIsAnimating(false), 1000)
-    } else {
-      setResult(null)
-      setHighlightedIndices([])
+      if (!data.answerable) {
+        setResult(null)
+        setHighlightedIndices([])
+        setError(data.description || "Try asking a 'how many people...' question.")
+        return
+      }
+
+      showStat(data.percentage, data.description, searchQuery)
+    } catch (err) {
+      console.log("[v0] search error:", err)
+      setError("Something went wrong generating that statistic. Please try again.")
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -157,18 +154,23 @@ export default function HowManyPeople() {
                   className="pl-10"
                 />
               </div>
-              <Button type="submit" disabled={isAnimating}>
-                Search
+              <Button type="submit" disabled={isAnimating || isLoading}>
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Search"}
               </Button>
-              <Button type="button" variant="outline" onClick={handleRandomStat} disabled={isAnimating}>
+              <Button type="button" variant="outline" onClick={handleRandomStat} disabled={isAnimating || isLoading}>
                 <Shuffle className="w-4 h-4 mr-2" />
                 Random
               </Button>
             </form>
 
-            <div className="text-sm text-gray-500">
-              Try: "How many people have anxiety?", "What percentage are left-handed?", "How many wear glasses?"
-            </div>
+            {error ? (
+              <div className="text-sm text-red-600">{error}</div>
+            ) : (
+              <div className="text-sm text-gray-500">
+                Ask anything: "How many people have anxiety?", "How many people can roll their tongue?", "How many
+                people are afraid of spiders?"
+              </div>
+            )}
           </CardContent>
         </Card>
 
